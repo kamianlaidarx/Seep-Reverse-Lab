@@ -92,6 +92,70 @@ if (-not $PrintOnly) {
 # 3. 生成 DeepSeek Harness 官方 Cordis Overlay 补丁 (cordis.generated.yml)
 # -----------------------------------------------------------------------------
 Write-Host "`n[3/3] 正在生成 DeepSeek Harness (DSH) 官方补丁 (cordis.generated.yml)..." -ForegroundColor White
+
+# 可选：探测 IDA Pro 并追加 ida-mcp 条目（未装则静默跳过，保持降级可用）。
+# 探测顺序与 idapro 自身一致：IDADIR → ida-config.json → 注册表 → 常见目录。
+$idaRoot = $null
+if ($env:IDADIR -and (Test-Path (Join-Path $env:IDADIR 'ida.exe'))) {
+    $idaRoot = $env:IDADIR
+}
+if (-not $idaRoot) {
+    $idaCfg = Join-Path $env:APPDATA 'Hex-Rays\IDA Pro\ida-config.json'
+    if (Test-Path $idaCfg) {
+        try {
+            $cfg = Get-Content $idaCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+            $d = $cfg.Paths.'ida-install-dir'
+            if ($d -and (Test-Path (Join-Path $d 'ida.exe'))) { $idaRoot = $d }
+        } catch { }
+    }
+}
+if (-not $idaRoot) {
+    foreach ($rp in @('HKCU:\Software\Hex-Rays\IDA Pro', 'HKLM:\SOFTWARE\Hex-Rays\IDA Pro')) {
+        if (Test-Path $rp) {
+            $p = (Get-ItemProperty $rp -ErrorAction SilentlyContinue).InstallDir
+            if ($p -and (Test-Path (Join-Path $p 'ida.exe'))) { $idaRoot = $p; break }
+        }
+    }
+}
+
+# idalib 模式需要一个能 import ida_pro_mcp 的 Python；优先系统 Python。
+$pyExe = $null
+foreach ($cand in @((Get-Command python -ErrorAction SilentlyContinue).Source,
+                    (Join-Path $idaRoot 'python311\python.exe'))) {
+    if ($cand -and (Test-Path $cand)) {
+        & $cand -c "import ida_pro_mcp" 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { $pyExe = $cand; break }
+    }
+}
+
+$idaBlock = ''
+if ($idaRoot -and $pyExe) {
+    $pyNorm = $pyExe.Replace('\', '/')
+    $idaBlock = @"
+
+    # IDA Pro 9.5+ 无头 idalib 模式（已探测到: $idaRoot）
+    # 注意：模式 A 走 stdio，不监听任何端口（13337 仅属模式 B）。
+    # 无头模式不含 dbg_* 调试工具，需要动态调试请改用 server.py + IDA GUI。
+    - id: ida-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: ida
+        transport: stdio
+        command: '$pyNorm'
+        args:
+          - '-m'
+          - 'ida_pro_mcp.idalib_supervisor'
+          - '--stdio'
+        env:
+          PYTHONIOENCODING: utf-8
+        toolCallTimeoutMs: 180000
+"@
+    Write-Host "  [i] 探测到 IDA Pro: $idaRoot" -ForegroundColor Cyan
+    Write-Host "  [i] IDA Python: $pyNorm" -ForegroundColor Cyan
+} else {
+    Write-Host "  [i] 未探测到可用 IDA Pro（或 ida_pro_mcp 未装），跳过 ida-mcp 条目" -ForegroundColor Gray
+}
+
 $dshYaml = @"
 # ==============================================================================
 # DeepSeek Harness (Cordis) Overlay 补丁 — 遵循 DSH 官方 - insert: 规范
@@ -112,6 +176,7 @@ $dshYaml = @"
         env:
           PYTHONIOENCODING: utf-8
         cwd: !!js process.cwd()
+$idaBlock
 "@
 $dshDest = Join-Path $ScriptDir 'cordis.generated.yml'
 if (-not $PrintOnly) {

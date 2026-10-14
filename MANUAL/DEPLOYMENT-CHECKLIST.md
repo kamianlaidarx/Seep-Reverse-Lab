@@ -1,6 +1,6 @@
 # MANUAL — 官方部署资产全景核验基准清单 (Deployment Checklist & Verification Manifest)
 
-> **版本**：v1.3.0  
+> **版本**：v1.3.1  
 > **适用范围**：Pi Agent / Claude Code / DeepSeek Harness / Codex / OpenCode  
 > **核心用途**：作为 Seep Reverse Lab 部署交付的 **单一真值源 (Single Source of Truth, SSOT)**。  
 > 明确声明每个组件的 **官方期望物理路径、文件数、入口文件、可用性验证命令、三态健康标准与降级处置方案**。  
@@ -29,11 +29,11 @@
 | # | 技能名称 (ID) | 宿主安装目标路径 | 官方期望文件/目录数 | 核心入口标识文件 | 可用性判据与验证命令 | 状态判定与指引 |
 |---|---|---|---|---|---|---|
 | **S1** | **`softseep`** ⭐总控 | `~/.pi/agent/skills/softseep/` | `SKILL.md` + 8 篇 `references/` (≥9 项) | `SKILL.md`<br>`references/license-validation.md` | 检查 8 篇 references 齐全，G0-G6 门控完整 | 🟢 **核心**。缺失则总控瘫痪。修复：`powershell setup\install-pi.ps1` |
-| **S2** | **`apkseep`** | `~/.pi/agent/skills/apkseep/` | `SKILL.md` + 45 refs + 56 scripts (≥115 项) | `SKILL.md`<br>`scripts/doctor.py` | 运行 `python scripts/doctor.py` 无报错 | 🟢 **核心**。安卓全链路专精。修复：重跑 `install-pi.ps1` |
-| **S3** | **`ida-reverse`** | `~/.pi/agent/skills/ida-reverse/` | `SKILL.md` (≥1 项) | `SKILL.md` | 包含 IDA 13337 端口自动唤醒规约 | 🟢 **核心**。IDA 自动化调度器。修复：重跑 `install-pi.ps1` |
+| **S2** | **`apkseep`** | `~/.pi/agent/skills/apkseep/` | `SKILL.md` + `references/` + `scripts/`（约 112 项） | `SKILL.md`<br>`scripts/doctor.py` | 运行 `python scripts/doctor.py` 无报错 | 🟢 **核心**。安卓全链路专精。修复：重跑 `install-pi.ps1` |
+| **S3** | **`ida-reverse`** | `~/.pi/agent/skills/ida-reverse/` | `SKILL.md` + `scripts/` (≥3 项) | `SKILL.md` | IDA 唤醒规约在位（模式 B 轮询 13337；模式 A 走 stdio 无端口） | 🟢 **核心**。IDA 自动化调度器。修复：重跑 `install-pi.ps1` |
 | **S4** | **`client-license-validation-bypass`** | `~/.pi/agent/skills/client-license-validation-bypass/` | `SKILL.md` (≥1 项) | `SKILL.md` | 包含 CWE-602 战术树与补丁/算号决策 | 🟢 **核心**。授权审计战术库。修复：重跑 `install-pi.ps1` |
 | **S5** | **`reverse-engineering`** | `~/.pi/agent/skills/reverse-engineering/` | `SKILL.md` + references (≥15 项) | `SKILL.md` | 通用逆向基准规则在位 | 🟢 战术包。修复：复制 `Tool/skill/safe-skills/reverse-engineering` |
-| **S6** | **`apk-diff`** | `~/.pi/agent/skills/apk-diff/` | `SKILL.md` + scripts (≥8 项) | `SKILL.md` | 二进制与 APK 差分工具在位 | 🟢 战术包。修复：复制 `Tool/skill/safe-skills/apk-diff` |
+| **S6** | **`apk-reverse`** | `~/.pi/agent/skills/apk-reverse/` | `SKILL.md` + scripts (≥8 项) | `SKILL.md` | 二进制与 APK 差分工具在位 | 🟢 战术包。修复：复制 `Tool/skill/safe-skills/apk-reverse` |
 | **S7** | **`radare2`** | `~/.pi/agent/skills/radare2/` | `SKILL.md` + 管道字典 (≥3 项) | `SKILL.md` | R2 命令行打桩字典在位 | 🟢 战术包。修复：复制 `Tool/skill/safe-skills/radare2` |
 | **S8** | **`mcp-js-reverse-playbook`** | `~/.pi/agent/skills/mcp-js-reverse-playbook/` | `SKILL.md` + 案例 (≥13 项) | `SKILL.md` | Web/JS 逆向分析基准在位 | 🟢 战术包。修复：复制 `Tool/skill/safe-skills/mcp-js-reverse-playbook` |
 | **S9** | **`ida-assistant`** | `~/.pi/agent/skills/ida-reverse/` (safe版) | `SKILL.md` + 插件 (≥3 项) | `SKILL.md` | IDA 辅助交互式脚本在位 | 🟢 战术包。修复：复制 `Tool/skill/safe-skills/ida-reverse` |
@@ -51,9 +51,19 @@ MCP 配置文件所在位置：
 | # | 服务标识 | 驱动命令 / 核心脚本 | 预期暴露出工具数 | 连通性测试命令 | 缺失/未配时的表现与降级路径 |
 |---|---|---|---|---|---|
 | **M1** | **`seep`** ⭐自研核心 | `python <SEEP_ROOT>/Tool/mcp/seep_mcp_server.py` | **23 项** | `python Tool/mcp/test_seep_mcp.py` 语法解析与测试通过 | 🔴 **阻断项**。若缺失无法调用 R2/JADX/Apktool/KB。修复：运行 `powershell setup\install.ps1` |
-| **M2** | **`ida`** 外部商业 | `<IDA_PYTHON> .../ida_pro_mcp/server.py` | ~243 项 | 探测 `127.0.0.1:13337` 端口或 IDA 进程 | 🟡 **可选降级**。未装或无授权时自动降级为内置 Radare2 无头分析套件，主干链路 100% 可用。指引详见 `MANUAL/IDA-PRO.md` |
+| **M2** | **`ida`** 外部商业 | **模式 A（推荐）**：`<PYTHON> -m ida_pro_mcp.idalib_supervisor --stdio`<br>**模式 B（GUI/调试）**：`<PYTHON> .../ida_pro_mcp/server.py` | 模式 A：**70 项**（`--unsafe` 时 73 项）<br>模式 B：视 GUI 插件而定 | 模式 A 无端口，用 MCP `initialize` + `tools/list` 验证；模式 B 探测 `127.0.0.1:13337` | 🟡 **可选降级**。未装或无授权时自动降级为内置 Radare2 无头分析套件，主干链路 100% 可用。指引详见 `MANUAL/IDA-PRO.md` |
 | **M3** | **`js-reverse`** | `npx -y js-reverse-mcp` | 12 项 | `npx -y js-reverse-mcp --version` | 🟡 **按需组件**。未安装 Node 时仅 Web 逆向受限，原生二进制不受影响。修复：安装 Node.js 18+ |
 | **M4** | **`playwright`** | `npx -y @playwright/mcp` | 18 项 | 依赖 `PLAYWRIGHT_MCP_EXTENSION_TOKEN` | 🟡 **按需组件**。未配 Token 时无头浏览器受限，原生逆向不受影响。 |
+
+> **M2 实测要点（避免误判）**：
+> 1. **端口 13337 只属于模式 B**。模式 A 走 stdio，**不监听任何端口**，用 13337 探测会永远失败。
+> 2. **`<IDA_PYTHON>` 不等于 `<IDA安装目录>\python311\python.exe`**。IDA 9.5 安装目录下通常
+>    已无 `python.exe`；应使用任意能 `import ida_pro_mcp` 的 Python 3.11+（系统 Python 亦可）。
+> 3. **必须先激活 idalib**：运行 `<IDA安装目录>\idalib\python\py-activate-idalib.py -d "<IDA安装目录>"`，
+>    否则 `import idapro` 会直接失败（原生中止，无 Python 异常栈）。
+> 4. **模式 A 不含 `dbg_*` 调试工具**（22 项）；需要动态调试请改用模式 B。
+> 5. **DSH 下需可写注册表与 `%APPDATA%`**：IDA 内核初始化会写入这两处。若 Agent 以受限沙箱
+>    运行 MCP 子进程，IDA 会原生中止。DSH 自带的 `dsh-mcp-client` 不沙箱化其子进程，故正常可用。
 
 ---
 
@@ -62,10 +72,15 @@ MCP 配置文件所在位置：
 | # | 组件名称 | 宿主安装目标路径 | 核心校验特征与关键词 | 功用与影响 |
 |---|---|---|---|---|
 | **P1** | **`SYSTEM.md`** | `~/.pi/agent/SYSTEM.md` | 包含 `Lab Mode Protocol`、思维重定向、反退缩十项 | Pi Agent 专用系统指令 |
-| **P2** | **`AGENTS.md`** | `~/.pi/agent/AGENTS.md`<br>项目根 `AGENTS.md` | 跨 Agent 通用无状态执行规范 | Codex / DSH / OpenCode 作战协议 |
+| **P2** | **`AGENTS.md`** | `Tool/prompts/AGENTS.md`（源）<br>`~/.pi/agent/AGENTS.md`（Pi 安装后） | 跨 Agent 通用无状态执行规范 | Codex / DSH / OpenCode 作战协议 |
 | **P3** | **`CLAUDE.md`** | 项目根 `CLAUDE.md` | 包含 Claude Code 项目级规范与自动化部署规约 | Claude Code 项目指令 |
 | **P4** | **`security-audit-interceptor.ts`** | `~/.pi/agent/extensions/` | 包含 `BLOCK_NONE` 底座注入与 `SENSITIVE_WORD_MAP` 字典 | 核心防模型拒绝与敏感词自动转译引擎 |
 | **P5** | **`lab-mode.flag`** | `~/.pi/agent/lab-mode.flag` | 输入 `lab：` 自动写入，输入 `退出实验` 自动删除 | 物理状态机标志文件（跨模型长文本持久化） |
+
+> **P2 / P5 说明**：`AGENTS.md` 的**权威源在 `Tool/prompts/`**，由 `install-pi.ps1` 复制到
+> `~/.pi/agent/`；项目根**不放** `AGENTS.md`（`verify.ps1` 也是按 `Tool/prompts/` 校验）。
+> `lab-mode.flag` 在**未开启实验模式时本就不存在**，这是正常状态而非部署缺陷 ——
+> 它由输入 `lab：` 触发创建。
 
 ---
 
@@ -149,17 +164,21 @@ MCP 配置文件所在位置：
 | 服务名 | 配置文件载体 | 期望工具数 | 实际状态 | 状态判定 | 降级/处置说明 |
 |---|---|---|---|---|---|
 | seep (自研) | ~/.pi/agent/mcp.json | 23 工具 | Connected (23) | 🟢 READY | 核心二进制/安卓/知识库能力完备 |
-| ida (商业) | ~/.pi/agent/mcp.json | ~243 工具 | 未监听 (13337) | 🟡 DEGRADED | 已自动降级为内置 Radare2，主链路 100% 可用 |
+| ida (商业) | ~/.pi/agent/mcp.json | 模式 A：70 工具 | 已装并接通 (idalib 9.5) | 🟢 READY | 无头 idalib 反编译/类型/交叉引用可用；`dbg_*` 需模式 B |
 | js-reverse | ~/.pi/agent/mcp.json | 12 工具 | 可用 (npx) | 🟢 READY | JS 逆向引擎就绪 |
 | playwright | ~/.pi/agent/mcp.json | 18 工具 | Token待配置 | 🟡 DEGRADED | 无头浏览器可选，不影响二进制逆向 |
 
 #### 3. 🔧 运行时与内置工具箱 (Native Tools)
 | 工具 | 预期版本/文件 | 实际状态 | 状态 | 说明 |
 |---|---|---|---|---|
-| Radare2 | v6.2.2 (radare2.exe) | 物理就绪 | 🟢 READY | 二进制反编译/反汇编引擎正常 |
+| Radare2 | 全套 (radare2/rabin2/radiff2/rasm2) | 物理就绪 | 🟢 READY | 二进制反编译/反汇编引擎正常 |
 | Jadx | v1.5.6 (jadx.bat) | 物理就绪 | 🟢 READY | Java 源码反编译引擎正常 |
-| Apktool | v3.0.3 (apktool.jar) | 物理就绪 | 🟢 READY | 资源解包与重打包正常 |
-| 攻防知识库 | ≥289 篇笔记 | 物理就绪 (318 篇) | 🟢 READY | seep_kb_* 检索后端就绪 |
+| Apktool | (apktool.jar) | 物理就绪 | 🟢 READY | 资源解包与重打包正常 |
+| 攻防知识库 | ≥289 篇笔记 | 物理就绪 | 🟢 READY | seep_kb_* 检索后端就绪 |
+
+> **版本号以实测为准**：上表刻意不写死具体版本 —— 内嵌工具链会随上游更新，
+> 请用 `rabin2 -v` / `jadx --version` / `apktool.bat -version` 现场核对，
+> 不要依赖 README 或本清单中的版本字面值。
 
 #### 4. 🚀 总结与开工建议
 - **系统评估**：核心组件与 9 大 Skill 100% 部署成功，工作台处于 **[READY / 完备就绪]** 状态；

@@ -317,12 +317,74 @@ Test-ManualItem "协议" "Python mcp 协议库环境支持 (mcp>=1.20,<1.29)" {
 } "运行 pip install ""mcp>=1.20,<1.29"" 补齐协议支持" "mcp 库已安装" "Python site-packages"
 
 Test-ManualItem "商业软件" "IDA Pro 商业反编译器协同 (需自备独立授权)" {
-    $found = $false
-    foreach ($c in @('D:\Tool\IDA Pro', 'C:\Program Files\IDA Pro', 'C:\Program Files\IDA Professional 9.0', 'C:\IDA Pro')) {
-        if (Test-Path (Join-Path $c 'ida.exe')) { $found = $true; break }
+    # 探测顺序与 idapro 自身的解析顺序保持一致，避免"装了却报未检测到"的假阴性：
+    #   1. $env:IDADIR（idapro 的最高优先级来源）
+    #   2. %APPDATA%\Hex-Rays\IDA Pro\ida-config.json 的 Paths.ida-install-dir
+    #      （py-activate-idalib.py 写入的权威位置）
+    #   3. 注册表 InstallDir
+    #   4. 常见安装目录（含非 C/D 盘与自定义盘位）
+    #   5. 用户目录下的便携版布局
+    $idaCandidates = New-Object System.Collections.Generic.List[string]
+
+    if ($env:IDADIR) { $idaCandidates.Add($env:IDADIR) }
+
+    $idaCfg = Join-Path $env:APPDATA 'Hex-Rays\IDA Pro\ida-config.json'
+    if (Test-Path $idaCfg) {
+        try {
+            $cfg = Get-Content $idaCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+            $dir = $cfg.Paths.'ida-install-dir'
+            if ($dir) { $idaCandidates.Add($dir) }
+        } catch { }
     }
-    $found
-} "未检测到本地 IDA Pro，如无授权不影响核心链路，系统自动降级使用 Radare2（详见 MANUAL\IDA-PRO.md）" "商业授权可选" "本地安装目录"
+
+    foreach ($rp in @('HKCU:\Software\Hex-Rays\IDA Pro', 'HKLM:\SOFTWARE\Hex-Rays\IDA Pro',
+                      'HKCU:\Software\Hex-Rays\IDA', 'HKLM:\SOFTWARE\Hex-Rays\IDA')) {
+        if (Test-Path $rp) {
+            $prop = (Get-ItemProperty $rp -ErrorAction SilentlyContinue).InstallDir
+            if ($prop) { $idaCandidates.Add($prop) }
+        }
+    }
+
+    # 覆盖所有盘符的常见目录，而非写死 C/D 盘
+    foreach ($drive in (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue).Name) {
+        foreach ($sub in @('IDA Pro', 'IDA Professional 9.5', 'IDA Professional 9.4',
+                           'IDA Professional 9.0', 'IDA', 'Tool\IDA Pro')) {
+            $idaCandidates.Add("${drive}:\$sub")
+        }
+    }
+    $idaCandidates.Add('C:\Program Files\IDA Pro')
+    $idaCandidates.Add('C:\Program Files\IDA Professional 9.5')
+    $idaCandidates.Add('C:\Program Files\IDA Professional 9.4')
+    $idaCandidates.Add('C:\Program Files\IDA Professional 9.0')
+    foreach ($sub in @('Desktop\IDA Pro\App\IDA Pro', 'Tools\IDA Pro 9.4\App\IDA Pro')) {
+        $idaCandidates.Add((Join-Path $env:USERPROFILE $sub))
+    }
+
+    $script:IdaRoot = $null
+    foreach ($c in $idaCandidates) {
+        if ($c -and (Test-Path (Join-Path $c 'ida.exe') -ErrorAction SilentlyContinue)) {
+            $script:IdaRoot = $c
+            break
+        }
+    }
+    [bool]$script:IdaRoot
+} "未检测到本地 IDA Pro，如无授权不影响核心链路，系统自动降级使用 Radare2（详见 MANUAL\IDA-PRO.md）" "商业授权可选" "IDADIR / ida-config.json / 注册表 / 全盘常见目录"
+
+# IDA 已安装时，进一步确认 MCP 桥接是否真正可用（区分"装了"与"接通了"）。
+if ($script:IdaRoot) {
+    Test-ManualItem "商业软件" "IDA MCP 桥接 (ida_pro_mcp 可加载 idalib)" {
+        # idapro 需要能定位 idalib.dll；ida_pro_mcp 提供 supervisor/server 入口。
+        $dll = Join-Path $script:IdaRoot 'idalib.dll'
+        $hasDll = Test-Path $dll
+        $py = Get-Command python -ErrorAction SilentlyContinue
+        $hasMcp = $false
+        if ($py) {
+            & python -c "import ida_pro_mcp" 2>&1 | Out-Null
+            $hasMcp = ($LASTEXITCODE -eq 0)
+        }
+        $hasDll -and $hasMcp
+    } "IDA 已安装但 MCP 桥接未就绪：确认 idalib.dll 在位，并运行 pip install ida-pro-mcp；详见 MANUAL\IDA-PRO.md" "idalib.dll + ida_pro_mcp" "$script:IdaRoot"
+}
 
 Test-ManualItem "配置" "Claude Code 项目级 MCP 注册 (.mcp.json 在根目录)" {
     Test-Path (Join-Path $Root '.mcp.json')
